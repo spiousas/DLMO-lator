@@ -8,7 +8,7 @@
 #
 
 pacman::p_load(shiny, viridis, ggplot2, dplyr, readr, tidyr, shinyjs, patchwork, 
-               ggsci, shinyWidgets, scales, here)
+               ggsci, shinyWidgets, scales, here, writexl)
 pacman::p_load_gh("emo")
 
 useShinyjs()
@@ -42,13 +42,9 @@ shinyUI(fluidPage(
   # Sidebar ####
   sidebarLayout(
     sidebarPanel(
-      radioButtons('sep', 'Separator for the file',
-                   c("Comma (,)" = ',', "Semicolon (;)" = ';',
-                     "Tab ( )" = '\t', "Pipe (|)" = '|'),
-                   ','),
       fileInput("input_file",
-                "Choose input data (.csv or .tsv)",
-                accept = c(".csv", ".tsv")),
+                "Choose input data (.xlsx)",
+                accept = c(".xlsx")),
       downloadButton("downloadData", "Download data")
     ),
     
@@ -64,4 +60,17 @@ shinyUI(fluidPage(
               br(),
               "<- Please start the analysis by loading data on the lefside panel",
               br()
-  ))))))))
+            ),
+            fluidRow(
+              plotOutput("rawplot", height = "auto"),
+            ),
+            fluidRow(
+              dataTableOutput('table_data')
+            )
+          )
+        )
+      )
+    )
+  )
+)
+)
