@@ -28,9 +28,9 @@ shinyServer(function(session, input, output) {
   theme_set(
     theme_minimal(
       ## increase size of all text elements
-      base_size = 14,
+      base_size = 16,
       ## set custom font family for all text elements
-      base_family = "Arial")
+      base_family = "Archivo")
   )
   
   # Function to load xls files with multipĺe sheets
@@ -44,39 +44,111 @@ shinyServer(function(session, input, output) {
     # assigning names to data frames 
     names(data_frame) <- sheets 
     
-    data <- data_frame[[1]] %>%
+    data <- data_frame[[1]] |>
       mutate(Placa = sheets[1])
     
     for (i in 2:length(sheets)) {
-      data <- data %>%
+      data <- data |>
         rbind(data_frame[[i]] %>% mutate(Placa = sheets[i]))
     }
     
     data
   }
-  
+
   data <- reactive({
-    multiplesheets(input$input_file$datapath)
+    file <- input$input_file
+    ext <- tools::file_ext(file$datapath)
+    
+    req(file)
+    validate(need(ext == c("xlsx"), "Please upload a xlsx file"))
+    
+    multiplesheets(file$datapath)
+  })
+
+  data_prepro <- reactive({
+    data() |>
+      drop_na(Time) |>
+      mutate(Hour = as_hms(ymd_hms(Time))) |>
+      mutate(`Concentration (pg/ml)` = as.numeric(`Concentration (pg/ml)`)) |>
+      drop_na(`Concentration (pg/ml)`) |> 
+      filter(`Concentration (pg/ml)` < input$max_conc)
   })
   
+  observe({
+    updateSelectInput(
+      session,
+      "raw_id", "ID to plot:",
+      choices = as.character(unique(data_prepro()$ID)),
+      selected = as.character(unique(data_prepro()$ID))[1])
+  })
+  
+  observe({
+    updateSelectInput(
+      session,
+      "raw_condition", "Condition to plot:", 
+      choices = as.character(unique(data_prepro()$Condition)),
+      selected = as.character(unique(data_prepro()$Condition))[1])
+  })
+  
+  
+  observe({
+    updateSelectInput(
+      session,
+      "filter_raw_data", "ID(s) to keep (only selected wells will be further processed):", 
+      choices = as.character(unique(data_prepro()$ID)),
+      selected = as.character(unique(data_prepro()$ID)))
+  })
+  
+  
   output$table_data <- renderDataTable(
-    data()
+    data_prepro() |> 
+      select(-Time) |>
+      relocate(Hour, .after = `Curve Point`)
   )
   
   output$rawplot <- renderPlot({  
-    data() %>%
-      drop_na(Time) %>%
-      drop_na(`Concentration (pg/ml)`) %>%
-      #filter(Placa == "Placa 1 12-3-24") %>%
-      mutate(`Concentration (pg/ml)` = as.numeric(`Concentration (pg/ml)`)) %>%
-      ggplot(aes(x = Time, y = `Concentration (pg/ml)`, color = Condition)) +
-      scale_y_continuous(limits = c(0, 1500)) +
-      scale_x_time() +
-      facet_wrap(~ID) +
+    data_prepro() |>
+      mutate(Hour = as.numeric(Hour)/3600) |>
+      filter(`Concentration (pg/ml)` < input$max_conc_plot) |>
+      ggplot(aes(x = Hour, y = `Concentration (pg/ml)`, color = Condition)) +
+      facet_wrap(~ID, labeller = label_both, scales="free_y") +
       geom_point() +
-      geom_line() +
-      theme_bw()},
+      scale_color_npg() +
+      geom_smooth(se = F) +
+      theme_bw() +
+      theme(legend.position = "top",
+            strip.background =element_blank())},
     height = 500, 
-    width = 800)
+    width = 600)
+  
+  output$indiv_rawplot <- renderPlot({  
+    data_prepro() |>
+      mutate(Hour = as.numeric(Hour)/3600) |>
+      filter(`Concentration (pg/ml)` < input$max_conc_plot) |>
+      filter(ID == input$raw_id) |>
+      ggplot(aes(x = Hour, y = `Concentration (pg/ml)`, color = Condition)) +
+      geom_point() +
+      scale_color_npg() +
+      geom_smooth(se = F) +
+      theme_bw() +
+      theme(legend.position = "top",
+            strip.background =element_blank())},
+    height = 300, 
+    width = 400)
+  
+  output$condition_rawplot <- renderPlot({  
+    data_prepro() |>
+      mutate(Hour = as.numeric(Hour)/3600) |>
+      filter(`Concentration (pg/ml)` < input$max_conc_plot) |>
+      filter(Condition == input$raw_condition) |>
+      ggplot(aes(x = Hour, y = `Concentration (pg/ml)`)) +
+      geom_point(color = "gray80") +
+      geom_smooth(aes(group = ID), se = F, color = "gray80") +
+      geom_smooth(color = "black", fill = "darkorange", se = T, linewidth = 1) +
+      theme_bw() +
+      theme(legend.position = "bottom",
+            strip.background =element_blank())},
+    height = 300, 
+    width = 400)
   
 })

@@ -8,7 +8,7 @@
 #
 
 pacman::p_load(shiny, viridis, ggplot2, dplyr, readr, tidyr, shinyjs, patchwork, 
-               ggsci, shinyWidgets, scales, here, writexl)
+               ggsci, shinyWidgets, scales, here, writexl, hms, lubridate)
 pacman::p_load_gh("emo")
 
 useShinyjs()
@@ -54,23 +54,65 @@ shinyUI(fluidPage(
         type = "tabs",
         tabPanel(
           # Raw data ####
-          "RAW data",
+          "Raw data",
           fluidPage(
+            h2("Raw data plotting"),
+            h4("(all subjects and conditions)"),
             fluidRow(
-              br(),
-              "<- Please start the analysis by loading data on the lefside panel",
-              br()
-            ),
+              column(width = 6,  
+              numericInput("max_conc","Discard data with concentration over (pg/ml):", 200,
+                           min = 1, )),
+              column(width = 6,  
+                     numericInput("max_conc_plot","Max allowed concentration for plotting (pg/ml):", 200,
+                                  min = 1, ))
+              ),
             fluidRow(
               plotOutput("rawplot", height = "auto"),
             ),
             fluidRow(
+              h2("Individual subject raw data"),
+              h4("(all conditions)"),
+              column(width = 12,
+                selectInput("raw_id", "ID to plot:", 
+                            multiple = FALSE,
+                            choices = "",
+                            selected = "",
+                            width = 200))
+              ),
+            fluidRow(
+              plotOutput("indiv_rawplot", height = "auto"),
+            ),
+            fluidRow(
+              h2("Individual condition raw data"),
+              h4("(all subjects and mean)"),
+              column(width = 12,
+                     selectInput("raw_condition", "Condition to plot:", 
+                                 multiple = FALSE,
+                                 choices = "",
+                                 selected = "",
+                                 width = 200))
+            ),
+            fluidRow(
+              plotOutput("condition_rawplot", height = "auto"),
+            ),
+            fluidRow(
+              column(width = 12,
+                     selectInput("filter_raw_data", "ID(s) to keep (only selected wells will be further processed):", 
+                                 multiple = TRUE,
+                                 choices = "",
+                                 selected = "",
+                                 width = 500))
+            ))),
+        tabPanel(
+          # Table data ####
+          "Raw table data",
+          fluidPage(
+            fluidRow(
               dataTableOutput('table_data')
-            )
+            ))
           )
         )
       )
     )
   )
-)
 )
