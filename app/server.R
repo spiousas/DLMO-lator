@@ -67,11 +67,19 @@ shinyServer(function(session, input, output) {
 
   data_prepro <- reactive({
     data() |>
-      drop_na(Time) |>
-      mutate(Hour = as_hms(ymd_hms(Time))) |>
-      mutate(`Concentration (pg/ml)` = as.numeric(`Concentration (pg/ml)`)) |>
-      drop_na(`Concentration (pg/ml)`) |> 
-      filter(`Concentration (pg/ml)` < input$max_conc)
+      drop_na(Date) |>
+      rowwise() |> 
+      mutate(Time = as_hms(ymd_hms(Time)),
+             Date = as.Date(Date),
+             Datetime = as.POSIXct(paste(Date, Time), tz = "America/Argentina/Buenos_Aires"),
+             Sunset = getSunlightTimes(Date,
+                                       input$latitude,
+                                       input$longitude, 
+                                       keep = "sunset", 
+                                       tz = input$tz)$sunset,
+             relTime = as.numeric(difftime(Datetime, Sunset, units = "mins")),
+             `Concentration (pg/ml)` = as.numeric(`Concentration (pg/ml)`)) |>
+      drop_na(`Concentration (pg/ml)`)
   })
   
   observe({
@@ -90,7 +98,6 @@ shinyServer(function(session, input, output) {
       selected = as.character(unique(data_prepro()$Condition))[1])
   })
   
-  
   observe({
     updateSelectInput(
       session,
@@ -99,49 +106,62 @@ shinyServer(function(session, input, output) {
       selected = as.character(unique(data_prepro()$ID)))
   })
   
-  
   output$table_data <- renderDataTable(
     data_prepro() |> 
       select(-Time) |>
       relocate(Hour, .after = `Curve Point`)
   )
+  var_x <- reactive({
+    if (input$relplot == "rel") {
+      var_x <- list("relTime", # Variable
+                    list(labs(x = "Time relative to sunset (mins)"),
+                         scale_x_continuous(breaks = seq(-540, 540, 60)),
+                         geom_vline(xintercept = 0, color = "black", linetype = "dashed"))) # ggplot components
+    } else if(input$relplot == "clock") {
+      var_x <- list("Time", # Variable
+                    labs(x = "Time")) # ggplot components
+    }
+    })
   
+  # Raw plot (all subjects) ####
   output$rawplot <- renderPlot({  
     data_prepro() |>
-      mutate(Hour = as.numeric(Hour)/3600) |>
       filter(`Concentration (pg/ml)` < input$max_conc_plot) |>
-      ggplot(aes(x = Hour, y = `Concentration (pg/ml)`, color = Condition)) +
+      ggplot(aes(x = .data[[ var_x()[[1]] ]], y = `Concentration (pg/ml)`, color = Condition)) +
       facet_wrap(~ID, labeller = label_both, scales="free_y") +
+      var_x()[[2]] +
       geom_point() +
-      scale_color_npg() +
       geom_smooth(se = F) +
+      scale_color_npg() +
       theme_bw() +
       theme(legend.position = "top",
             strip.background =element_blank())},
-    height = 500, 
-    width = 600)
+    height = 600, 
+    width = 800)
   
+  # Raw plot (individual subjects) ####
   output$indiv_rawplot <- renderPlot({  
     data_prepro() |>
-      mutate(Hour = as.numeric(Hour)/3600) |>
       filter(`Concentration (pg/ml)` < input$max_conc_plot) |>
       filter(ID == input$raw_id) |>
-      ggplot(aes(x = Hour, y = `Concentration (pg/ml)`, color = Condition)) +
+      ggplot(aes(x = .data[[ var_x()[[1]] ]], y = `Concentration (pg/ml)`, color = Condition)) +
+      var_x()[[2]] +
       geom_point() +
-      scale_color_npg() +
       geom_smooth(se = F) +
+      scale_color_npg() +
       theme_bw() +
       theme(legend.position = "top",
             strip.background =element_blank())},
     height = 300, 
     width = 400)
   
+  # Raw plot (average) ####
   output$condition_rawplot <- renderPlot({  
     data_prepro() |>
-      mutate(Hour = as.numeric(Hour)/3600) |>
       filter(`Concentration (pg/ml)` < input$max_conc_plot) |>
       filter(Condition == input$raw_condition) |>
-      ggplot(aes(x = Hour, y = `Concentration (pg/ml)`)) +
+      ggplot(aes(x = .data[[ var_x()[[1]] ]], y = `Concentration (pg/ml)`)) +
+      var_x()[[2]] +
       geom_point(color = "gray80") +
       geom_smooth(aes(group = ID), se = F, color = "gray80") +
       geom_smooth(color = "black", fill = "darkorange", se = T, linewidth = 1) +
@@ -150,5 +170,26 @@ shinyServer(function(session, input, output) {
             strip.background =element_blank())},
     height = 300, 
     width = 400)
+  
+  data_filtered <- reactive({
+    data_prepro() |>
+      dplyr::filter(ID %in% input$filter_raw_data)
+  })
+  
+  # Preprocessed plot plot (all subjects) ####
+  output$preprocplot <- renderPlot({  
+    data_filtered() |>
+      filter(`Concentration (pg/ml)` < input$max_conc_plot) |>
+      ggplot(aes(x = .data[[ var_x()[[1]] ]], y = `Concentration (pg/ml)`, color = Condition)) +
+      facet_wrap(~ID, labeller = label_both, scales="free_y") +
+      var_x()[[2]] +
+      geom_point() +
+      geom_smooth(se = F) +
+      scale_color_npg() +
+      theme_bw() +
+      theme(legend.position = "top",
+            strip.background =element_blank())},
+    height = 600, 
+    width = 800)
   
 })
